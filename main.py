@@ -2,6 +2,7 @@ import soundcloud
 import urllib.request
 import json
 import requests
+import time
 
 clientID = "YOUR_CLIENT_ID_HERE"
 client = soundcloud.Client(client_id=clientID)
@@ -26,20 +27,26 @@ csv_file = open("{} like list.csv".format(user_name), "w", encoding='UTF-8')
 csv_file.write("Track Title, Track URL\n")  # Writes headers to CSV file
 
 offset_number = 0
-while offset_number < number_of_user_likes:
+page_size = 200
+get_next_page = True
+while get_next_page:
     try:
-        track_fetch = urllib.request.urlopen(
-            "{}/users/{}/favorites.json?client_id={}&offset={}&limit1".format(api_base, userID.id,
-                                                                              clientID, offset_number)).read()
-        track_data = json.loads(track_fetch.decode())
-        track_title = track_data[0]["title"].replace(",", "")  # Removes commas as causes issues with .csv files
-        csv_file.write("{},{}\n".format(track_title, track_data[0]["permalink_url"]))
+        if offset_number == 0:
+          tracks_fetch = urllib.request.urlopen(
+              "{}/users/{}/favorites?client_id={}&limit={}&linked_partitioning=1".format(api_base, userID.id, clientID,page_size)).read()
+          tracks = json.loads(tracks_fetch.decode())
+        else:
+          tracks_fetch = urllib.request.urlopen(tracks['next_href']).read()
+          tracks = json.loads(tracks_fetch.decode())
+        for track in tracks['collection']:
+          track_title = track['title'].replace(",", "")  # Removes commas as causes issues with .csv files
+          csv_file.write("{},{}\n".format(track_title, track['permalink_url']))
+        get_next_page = 'next_href' in tracks
+        
         offset_number += 1
-        print("{} of {} ({}%)".format(offset_number, number_of_user_likes,
-                                      round(float(100 / number_of_user_likes * offset_number), 2)))
-    except IndexError:
+        print("Got page {} of {} results".format(offset_number,len(tracks['collection'])))
+    except (IndexError, requests.HTTPError, urllib.error.HTTPError):
         print("There is an issue with Soundcloud, please try again")
-    except requests.HTTPError:
-        print("There is an issue with Soundcloud, please try again")
+        time.sleep(1)
     except requests.ConnectionError:
         print("Check your internet connection")
